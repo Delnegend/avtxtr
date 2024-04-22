@@ -30,13 +30,17 @@ Extract users' avatars from various social media
 - YouTube
 
 ## API
-- `GET localhost:8080/{social}/{username}`
+- `GET localhost:8080/{social}/{username}?fallback={fallback_url}`
     - `social`: social media
     - `username`: username
+    - `fallback_url`: the fallback avatar image
     - Response
         - `200`: the avatar image
         - `429`: too many requests
         - `500`: internal server error
+    - Example
+        - `GET localhost:8080/deviantart/username`
+        - `GET localhost:8080/deviantart/username?fallback=https://example.com/avatar.png`
 
 ## FAQ
 - How to get the cookies for FurAffinity?

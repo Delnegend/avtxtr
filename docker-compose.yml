@@ -1,0 +1,24 @@
+services:
+    chromedp:
+        container_name: chromedp
+        image: chromedp/headless-shell
+        restart: unless-stopped
+    avtxtr:
+        container_name: avtxtr
+        image: avtxtr
+        build:
+            context: .
+            dockerfile: Dockerfile
+        pull_policy: never
+        ports:
+            - 8080:8080
+        restart: unless-stopped
+        depends_on:
+            - chromedp
+        environment:
+            - CHROMEDP_ADDR=http://chromedp:9222
+            - FA_COOKIE_A=
+            - FA_COOKIE_B=
+            - MAX_REQUEST_PER_TIME_UNIT=
+            - CLEAR_LIST_EVERY_TIME_UNIT=
+            - REQUEST_TIMEOUT=

@@ -55,19 +55,29 @@ func main() {
 	}
 
 	http.HandleFunc("GET /{social}/{username}", func(w http.ResponseWriter, r *http.Request) {
+		// rate limit
+		ip := r.RemoteAddr
+		if ipList[ip] > maxRequestPerTimeUnit {
+			slog.Warn("rate limited", "ip", ip)
+			http.Error(w, "too many requests", http.StatusTooManyRequests)
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
 		defer cancel()
 
 		// extract values
 		socialcode := r.PathValue("social")
 		username := r.PathValue("username")
-		ip := r.RemoteAddr
+		var fallbackAvatar string
 
-		// rate limit
-		if ipList[ip] > maxRequestPerTimeUnit {
-			slog.Warn("rate limited", "ip", ip)
-			http.Error(w, "too many requests", http.StatusTooManyRequests)
-			return
+		// parse fallback url from localhost:8080/{social}/{username}?fallback=url
+		if fallback := r.URL.Query().Get("fallback"); fallback != "" {
+			if _, err := url.ParseRequestURI(fallback); err != nil {
+				http.Error(w, "invalid fallback URL", http.StatusBadRequest)
+				return
+			}
+			fallbackAvatar = fallback
 		}
 
 		slog.Debug("new request", "social", socialcode, "username", username)
@@ -98,45 +108,50 @@ func main() {
 			http.Error(w, "invalid social", http.StatusBadRequest)
 			return
 		}
+
+		// if can't parse
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			switch fallbackAvatar != "" {
+			case false:
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			case true:
+				if err := utils.WriteResponseImage(ctx, fallbackAvatar, &w); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+			}
 		}
 
 		// validate the url
 		if _, err = url.ParseRequestURI(avatarUrl); err != nil {
-			http.Error(w, "invalid avatar URL from 3rd party server", http.StatusInternalServerError)
-			return
-		}
-
-		// get the image data
-		req, err := http.NewRequestWithContext(ctx, "GET", avatarUrl, nil)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer resp.Body.Close()
-
-		// write to response writer
-	scoped:
-		for {
-			select {
-			case <-r.Context().Done():
+			switch fallbackAvatar != "" {
+			case false:
+				http.Error(w, "invalid avatar URL from 3rd party server", http.StatusInternalServerError)
 				return
-			default:
-				data := make([]byte, 1024)
-				if n, err := resp.Body.Read(data); err != nil {
-					break scoped
-				} else {
-					w.Write(data[:n])
+			case true:
+				if err := utils.WriteResponseImage(ctx, fallbackAvatar, &w); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
 				}
 			}
 		}
+
+		// write the image
+		if err := utils.WriteResponseImage(ctx, avatarUrl, &w); err != nil {
+			switch fallbackAvatar != "" {
+			case false:
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			case true:
+				if err := utils.WriteResponseImage(ctx, fallbackAvatar, &w); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+			}
+		}
+
+		http.Error(w, "I'm a teapot", http.StatusTeapot)
 	})
 
 	slog.Info("Listening on :8080")

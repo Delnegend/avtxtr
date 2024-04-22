@@ -54,6 +54,10 @@ func main() {
 		slog.Warn("REQUEST_TIMEOUT is not set, using default value", "value", requestTimeout)
 	}
 
+	http.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://github.com/Delnegend/avtxtr", http.StatusSeeOther)
+	})
+
 	http.HandleFunc("GET /{social}/{username}", func(w http.ResponseWriter, r *http.Request) {
 		// rate limit
 		ip := r.RemoteAddr
